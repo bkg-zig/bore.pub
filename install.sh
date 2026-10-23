@@ -87,13 +87,35 @@ START_URL="${START_URL:-https://raw.githubusercontent.com/bkg-zig/bore.pub/main/
 SELF="${BASH_SOURCE[0]:-}"
 if [[ -n "$SELF" && -f "$SELF" && -f "$(dirname "$SELF")/start.sh" ]]; then
   install -m 0755 "$(dirname "$SELF")/start.sh" "$PINOKIO_DIR/start.sh"
+  [[ -f "$(dirname "$SELF")/auth-proxy.js" ]] && \
+    install -m 0644 "$(dirname "$SELF")/auth-proxy.js" "$PINOKIO_DIR/auth-proxy.js"
   log "installed start.sh from local checkout"
 else
   curl -fsSL "$START_URL" -o "$PINOKIO_DIR/start.sh"
   chmod +x "$PINOKIO_DIR/start.sh"
-  log "installed start.sh from $START_URL"
+  curl -fsSL "${START_URL%/*}/auth-proxy.js" -o "$PINOKIO_DIR/auth-proxy.js"
+  log "installed start.sh + auth-proxy.js from ${START_URL%/*}"
+fi
+
+# ---- auto-tunnel plugin ----------------------------------------------------
+# Tunnels every app port and lists the current (random) URLs in the dashboard.
+PINOKIO_HOME="${PINOKIO_HOME:-$HOME/.pinokio}"
+PLUGIN_DIR="$PINOKIO_HOME/plugin/bore-pinokio-auto"
+PLUGIN_REPO="${PLUGIN_REPO:-https://github.com/bkg-zig/bore_pinokio_pluckin-bKG.git}"
+mkdir -p "$PINOKIO_HOME/plugin"
+if [[ -d "$PLUGIN_DIR/.git" ]]; then
+  git -C "$PLUGIN_DIR" pull --ff-only -q || true
+  log "auto-tunnel plugin already present"
+else
+  log "installing auto-tunnel plugin"
+  git clone --depth 1 -q "$PLUGIN_REPO" "$PLUGIN_DIR" || log "warning: could not clone plugin"
+fi
+# Mark it installed in the Pinokio UI by seeding the binary it looks for.
+if [[ -d "$PLUGIN_DIR" && ! -x "$PLUGIN_DIR/bore" ]]; then
+  cp /usr/local/bin/bore "$PLUGIN_DIR/bore" 2>/dev/null && chmod +x "$PLUGIN_DIR/bore" || true
 fi
 
 printf '\n'
 log "done. start it with:"
 printf '\n    %s/start.sh\n\n' "$PINOKIO_DIR"
+log "then open the Pinokio dashboard: the plugin lists every live tunnel URL."
