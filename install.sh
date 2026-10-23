@@ -3,19 +3,41 @@
 # install.sh - install pinokiod and expose it with a bore tunnel.
 #
 #   curl -fsSL https://raw.githubusercontent.com/bkg-zig/bore.pub/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/bkg-zig/bore.pub/main/install.sh | sudo bash -s -- --start
+#
+# Safe to run again at any time: it updates what exists instead of wiping it,
+# so `--start` on a fresh Colab runtime is a full reinstall in one command.
 #
 # Environment:
 #   PINOKIO_DIR     where pinokiod is cloned        (default: $HOME/pinokiod)
 #   NODE_VERSION    Node.js version to install      (default: v20.19.5)
 #   BORE_VERSION    bore release to install         (default: v0.6.0)
 #   REPO            pinokiod git remote             (default: upstream)
+#   PORT            local pinokiod port             (default: 42000)
+#   START           1 = start after installing      (same as --start)
 #
 set -Eeuo pipefail
+
+# Resolve this script to an absolute path *before* any cd, so the local
+# checkout is used when there is one.
+SELF="${BASH_SOURCE[0]:-}"
+if [[ -n "$SELF" && -f "$SELF" ]]; then
+  SELF="$(cd -- "$(dirname -- "$SELF")" && pwd)/$(basename -- "$SELF")"
+fi
 
 REPO="${REPO:-https://github.com/pinokiocomputer/pinokiod.git}"
 PINOKIO_DIR="${PINOKIO_DIR:-$HOME/pinokiod}"
 NODE_VERSION="${NODE_VERSION:-v20.19.5}"
 BORE_VERSION="${BORE_VERSION:-v0.6.0}"
+WANT_START="${START:-0}"
+
+for arg in "$@"; do
+  case "$arg" in
+    --start)    WANT_START=1 ;;
+    --no-start) WANT_START=0 ;;
+    *) printf '[install] ignoring unknown argument: %s\n' "$arg" >&2 ;;
+  esac
+done
 
 log() { printf '\033[36m[install]\033[0m %s\n' "$*"; }
 die() { printf '\033[31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -84,7 +106,6 @@ npm ci --omit=dev --no-audit --no-fund
 # ---- launcher --------------------------------------------------------------
 # install.sh may be run from a checkout or piped from curl, so handle both.
 START_URL="${START_URL:-https://raw.githubusercontent.com/bkg-zig/bore.pub/main/start.sh}"
-SELF="${BASH_SOURCE[0]:-}"
 if [[ -n "$SELF" && -f "$SELF" && -f "$(dirname "$SELF")/start.sh" ]]; then
   for f in start.sh stop.sh status.sh; do
     [[ -f "$(dirname "$SELF")/$f" ]] && install -m 0755 "$(dirname "$SELF")/$f" "$PINOKIO_DIR/$f"
@@ -140,7 +161,40 @@ if [[ ! -f "$AUTH_ENV" ]]; then
   log "wrote $AUTH_ENV (user bkg, random password at each start)"
 fi
 
+# ---- start -----------------------------------------------------------------
+if [[ "$WANT_START" == 1 ]]; then
+  if [[ -f "$PINOKIO_DIR/logs/start.pid" ]] && kill -0 "$(cat "$PINOKIO_DIR/logs/start.pid")" 2>/dev/null; then
+    log "pinokiod is already running (pid $(cat "$PINOKIO_DIR/logs/start.pid"))"
+  else
+    log "starting pinokiod in the background"
+    mkdir -p "$PINOKIO_DIR/logs"
+    PINOKIO_DIR="$PINOKIO_DIR" PINOKIO_HOME="$PINOKIO_HOME" \
+      setsid "$PINOKIO_DIR/start.sh" </dev/null >>"$PINOKIO_DIR/logs/install-start.log" 2>&1 &
+    for _ in $(seq 1 120); do
+      [[ -f "$PINOKIO_DIR/url.md" ]] && grep -q '^## http' "$PINOKIO_DIR/url.md" && break
+      sleep 2
+    done
+  fi
+
+  if [[ -f "$PINOKIO_DIR/url.md" ]] && grep -q '^## http' "$PINOKIO_DIR/url.md"; then
+    url="$(grep -m1 '^## http' "$PINOKIO_DIR/url.md" | sed -E 's/^## //')"
+    pass="$(grep -m1 '| Password' "$PINOKIO_DIR/url.md" | sed -E 's/.*`([^`]+)`.*/\1/' || true)"
+    printf '\n  \033[1;32m=== PINOKIO IS LIVE ===\033[0m\n\n'
+    printf '  URL  : \033[1m%s\033[0m\n' "$url"
+    printf '  User : bkg\n'
+    [[ -n "$pass" ]] && printf '  Pass : \033[1m%s\033[0m\n' "$pass"
+    printf '\n  Logs   : %s/logs/\n' "$PINOKIO_DIR"
+    printf '  Status : %s/status.sh\n' "$PINOKIO_DIR"
+    printf '  Stop   : %s/stop.sh\n\n' "$PINOKIO_DIR"
+  else
+    log "warning: the tunnel did not come up yet - check $PINOKIO_DIR/logs/install-start.log"
+    log "start it manually with $PINOKIO_DIR/start.sh"
+  fi
+  exit 0
+fi
+
 printf '\n'
 log "done. start it with:"
 printf '\n    %s/start.sh\n\n' "$PINOKIO_DIR"
+log "or re-run this script with --start to install and launch in one step."
 log "user is bkg; the random password is printed at start and saved in url.md."

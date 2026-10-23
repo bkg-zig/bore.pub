@@ -16,6 +16,14 @@ curl -fsSL https://raw.githubusercontent.com/bkg-zig/bore.pub/main/install.sh | 
 
 Installs Node.js 20, bore, git + build tooling, clones `pinokiod` into `~/pinokiod`, runs `npm ci --omit=dev`, and installs the [auto-tunnel plugin](https://github.com/bkg-zig/bore_pinokio_pluckin-bKG) that lists live URLs in the Pinokio dashboard.
 
+Add `--start` to install **and** launch in one command (safe to re-run on a fresh Colab runtime):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bkg-zig/bore.pub/main/install.sh | sudo bash -s -- --start
+```
+
+It prints the live URL and password when the tunnel is up.
+
 ## Run
 
 ```bash
@@ -61,7 +69,7 @@ All via environment variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PORT` | `42000` | local port pinokiod listens on |
+| `PORT` | `42000` | pinokiod hardcodes this upstream; other values are ignored with a warning |
 | `BORE_SERVER` | `bore.pub` | tunnel server |
 | `BORE_PORT` | `0` (random) | requested public port |
 | `BORE_SECRET` | unset | shared secret for a self-hosted bore server |

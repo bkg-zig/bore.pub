@@ -24,6 +24,12 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 PORT="${PORT:-42000}"
+# pinokiod itself always binds 42000 (DEFAULT_PORT is hardcoded upstream), so
+# a different PORT would only break the readiness check. Refuse it loudly.
+if [[ "$PORT" != 42000 ]]; then
+  printf '\033[33m[warn]\033[0m pinokiod always listens on 42000 - ignoring PORT=%s\n' "$PORT" >&2
+  PORT=42000
+fi
 BORE_SERVER="${BORE_SERVER:-bore.pub}"
 BORE_PORT="${BORE_PORT:-0}"
 BORE_SECRET="${BORE_SECRET:-}"
