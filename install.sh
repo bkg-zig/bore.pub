@@ -81,6 +81,19 @@ log "installing npm dependencies (2-3 minutes)"
 cd "$PINOKIO_DIR"
 npm ci --omit=dev --no-audit --no-fund
 
+# ---- launcher --------------------------------------------------------------
+# install.sh may be run from a checkout or piped from curl, so handle both.
+START_URL="${START_URL:-https://raw.githubusercontent.com/bkg-zig/bore.pub/main/start.sh}"
+SELF="${BASH_SOURCE[0]:-}"
+if [[ -n "$SELF" && -f "$SELF" && -f "$(dirname "$SELF")/start.sh" ]]; then
+  install -m 0755 "$(dirname "$SELF")/start.sh" "$PINOKIO_DIR/start.sh"
+  log "installed start.sh from local checkout"
+else
+  curl -fsSL "$START_URL" -o "$PINOKIO_DIR/start.sh"
+  chmod +x "$PINOKIO_DIR/start.sh"
+  log "installed start.sh from $START_URL"
+fi
+
 printf '\n'
 log "done. start it with:"
 printf '\n    %s/start.sh\n\n' "$PINOKIO_DIR"

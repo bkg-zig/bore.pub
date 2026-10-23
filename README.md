@@ -57,6 +57,8 @@ All via environment variables:
 | `PINOKIO_DIR` | `~/pinokiod` | pinokiod checkout |
 | `PINOKIO_HOME` | `~/.pinokio` | Pinokio state dir (apps, downloads) |
 | `LOG_DIR` | `$PINOKIO_DIR/logs` | log output |
+| `URL_FILE` | `url.md` next to `start.sh` | live-URL status file |
+| `URL_PUSH` | `0` | `1` = commit + push `url.md` on every start/stop |
 
 Examples:
 
@@ -65,7 +67,21 @@ PORT=8080 ./start.sh
 NO_TUNNEL=1 ./start.sh
 BORE_PORT=12345 ./start.sh
 BORE_SERVER=tunnel.example.com BORE_SECRET=xyz ./start.sh
+URL_PUSH=1 ./start.sh          # keep url.md on GitHub in sync
 ```
+
+## url.md
+
+`start.sh` rewrites `url.md` twice per session: once when the tunnel is up, once on shutdown.
+
+```markdown
+## http://bore.pub:17731
+```
+
+Set `URL_PUSH=1` to also commit and push it, so the file on GitHub always shows whether the tunnel is live. That needs push access to the repo containing `url.md` (an SSH deploy key with write access works). Without it, the file is still updated locally.
+
+Note the URL is **random on every launch** and dies with the process — `url.md` is a status indicator, not a permanent address. See below for a stable URL.
+
 
 ## Stable URLs (self-hosted server)
 
@@ -86,8 +102,9 @@ BORE_SERVER=your-vps.example.com BORE_SECRET="$SECRET" BORE_PORT=42000 ./start.s
 ## Layout
 
 ```
-install.sh   # node + bore + pinokiod + npm deps
+install.sh   # node + bore + pinokiod + npm deps, installs start.sh
 start.sh     # pinokiod + bore tunnel, one process tree, clean shutdown
+url.md       # current tunnel URL, rewritten by start.sh
 ```
 
 ## License
