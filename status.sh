@@ -9,6 +9,8 @@ if [[ -n "${PINOKIO_DIR:-}" ]]; then
   :
 elif [[ -f "$SCRIPT_DIR/script/index.js" ]]; then
   PINOKIO_DIR="$SCRIPT_DIR"
+elif [[ -f "$SCRIPT_DIR/logs/start.pid" ]]; then
+  PINOKIO_DIR="$SCRIPT_DIR"
 else
   PINOKIO_DIR="$HOME/pinokiod"
 fi

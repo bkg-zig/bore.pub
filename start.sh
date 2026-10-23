@@ -282,7 +282,11 @@ cleanup() {
   else
     rm -f "$STATE_FILE" 2>/dev/null || true
   fi
-  rm -f "$PID_FILE" 2>/dev/null || true
+  # only remove the pidfile if it is ours (a failed start must not clobber
+  # the pidfile of an instance that is already running)
+  if [[ "$(cat "$PID_FILE" 2>/dev/null)" == "$$" ]]; then
+    rm -f "$PID_FILE" 2>/dev/null || true
+  fi
   wait 2>/dev/null || true
   exit "$code"
 }
