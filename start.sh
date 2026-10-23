@@ -30,9 +30,22 @@ if [[ "$PORT" != 42000 ]]; then
   printf '\033[33m[warn]\033[0m pinokiod always listens on 42000 - ignoring PORT=%s\n' "$PORT" >&2
   PORT=42000
 fi
+
+# Private tunnel: PUBLIC_DOMAIN=<domain> gives stable names instead of a random
+# bore.pub port. With a private bore server the port can also be pinned, so
+# https://pinokio.<domain> never changes.
+PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
+PUBLIC_URL="${PUBLIC_URL:-}"
+PUBLIC_URL_FIXED=0
+[[ -n "$PUBLIC_URL" ]] && PUBLIC_URL_FIXED=1
 BORE_SERVER="${BORE_SERVER:-bore.pub}"
 BORE_PORT="${BORE_PORT:-0}"
 BORE_SECRET="${BORE_SECRET:-}"
+if [[ -n "$PUBLIC_DOMAIN" ]]; then
+  [[ "$BORE_PORT" == 0 ]] && BORE_PORT=42000
+  PUBLIC_URL="https://pinokio.${PUBLIC_DOMAIN}"
+  PUBLIC_URL_FIXED=1
+fi
 NO_TUNNEL="${NO_TUNNEL:-0}"
 AUTO_APPS="${AUTO_APPS:-1}"
 
@@ -111,7 +124,7 @@ write_url_md() {
     echo
     case "$state" in
       live)
-        echo "## http://${URL}"
+        echo "## ${PUBLIC_URL}"
         echo
         echo "| | |"
         echo "|---|---|"
@@ -123,7 +136,7 @@ write_url_md() {
       closed)
         echo "## no active tunnel"
         echo
-        echo "Last URL: \`http://${URL}\` (no longer valid)"
+        echo "Last URL: \`${PUBLIC_URL}\` (no longer valid)"
         ;;
       *)
         echo "## starting..."
@@ -148,7 +161,7 @@ write_state() {
   "state": "$state",
   "local_port": $PORT,
   "public_port": ${URL##*:},
-  "url": "${URL:+http://$URL}",
+  "url": "${PUBLIC_URL}",
   "auth": $([[ "$AUTH" == 1 ]] && echo true || echo false),
   "auth_user": "$AUTH_USER",
   "updated": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -220,6 +233,8 @@ start_watcher() {
   [[ -f "$AUTO_SCRIPT" ]] || { warn "auto-tunnel.sh not found - app tunnels disabled"; return 0; }
   PINOKIOD_PID="$APP_PID" PINOKIO_HOME="$PINOKIO_HOME" \
     BORE_SERVER="$BORE_SERVER" BORE_SECRET="$BORE_SECRET" \
+    PUBLIC_DOMAIN="$PUBLIC_DOMAIN" \
+    PORT_BASE="${PORT_BASE:-43000}" PORT_RANGE="${PORT_RANGE:-1000}" \
     SKIP_PORTS="22 53 7835 3000 3001 3002 ${PORT} ${AUTH_PORT}" \
     ALLOW_PORTS="${ALLOW_PORTS:-}" \
     STATE_DIR="$STATE_DIR" LOG="$AUTO_LOG" \
@@ -247,16 +262,17 @@ start_bore() {
   [[ -n "$found" ]] || return 1
 
   URL="$found"
+  [[ "$PUBLIC_URL_FIXED" == 1 ]] || PUBLIC_URL="http://$URL"
   write_url_md live
   write_state live
-  push_url_md "live at http://${URL}"
+  push_url_md "live at ${PUBLIC_URL}"
   return 0
 }
 
 banner() {
   printf '\n'
   printf '  \033[1;32m=== PINOKIO IS LIVE ===\033[0m\n\n'
-  printf '  URL  : \033[1mhttp://%s\033[0m\n' "$URL"
+  printf '  URL  : \033[1m%s\033[0m\n' "$PUBLIC_URL"
   printf '  User : %s\n' "$AUTH_USER"
   printf '  Pass : \033[1m%s\033[0m\n' "$AUTH_PASS"
   printf '\n  Local: http://localhost:%s\n' "$TUNNEL_PORT"
@@ -284,7 +300,7 @@ cleanup() {
   if [[ -n "$URL" ]]; then
     write_url_md closed || true
     write_state closed || true
-    push_url_md "closed (last: http://${URL})" || true
+    push_url_md "closed (last: ${PUBLIC_URL})" || true
   else
     rm -f "$STATE_FILE" 2>/dev/null || true
   fi
@@ -381,7 +397,7 @@ while [[ "$STOPPING" == 0 ]]; do
   if [[ "$NO_TUNNEL" != 1 ]] && ! alive "$BORE_PID"; then
     warn "tunnel dropped - reconnecting"
     if start_bore; then
-      log "tunnel restored: http://${URL}"
+      log "tunnel restored: ${PUBLIC_URL}"
       banner
     else
       warn "reconnect failed - retrying in 10s"
