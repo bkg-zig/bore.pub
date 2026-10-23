@@ -25,16 +25,27 @@ Installs Node.js 20, bore, git + build tooling, clones `pinokiod` into `~/pinoki
 ```
 [start] pinokiod ready: http://localhost:42000
 [start] starting auth proxy on 127.0.0.1:42001
+[start] starting app auto-tunnel (Pinokio app ports only)
 [start] opening bore tunnel to bore.pub (port 42001)
 
   === PINOKIO IS LIVE ===
 
-  Public : http://bore.pub:57835
-  User   : pinokio
-  Pass   : kTJf5aM7H9er
+  URL  : http://bore.pub:46490
+  User : bkg
+  Pass : -tQUw7qVh4Mc
+
+  Supervised: a dropped tunnel reconnects and updates url.md.
+  Stop with: ~/pinokiod/stop.sh
 ```
 
-Ctrl-C stops the tunnel, the proxy and the server together.
+**The URL stays the same as long as the process is not killed.** It only changes if the bore connection itself drops, because bore.pub hands out a random port per connection — and in that case `start.sh` reconnects, rewrites `url.md` and the dashboard entry automatically, then prints the new URL.
+
+`start.sh` supervises pinokiod, the auth proxy, the tunnel and the app watcher: any of them dying is restarted in place. Stop it with `stop.sh` (never `pkill`):
+
+```bash
+~/pinokiod/stop.sh     # clean shutdown, by pidfile
+~/pinokiod/status.sh   # what runs, live URL, every app tunnel
+```
 
 ### The long way
 
@@ -56,14 +67,17 @@ All via environment variables:
 | `BORE_SECRET` | unset | shared secret for a self-hosted bore server |
 | `NO_TUNNEL` | `0` | `1` = local only, no tunnel |
 | `AUTH` | `1` | `0` = no password (not recommended) |
-| `AUTH_USER` | `pinokio` | Basic Auth username |
-| `AUTH_PASS` | random | Basic Auth password (auto-generated, printed) |
+| `AUTH_USER` | `bkg` | Basic Auth username |
+| `AUTH_PASS` | random each start | Basic Auth password (printed + written to `url.md`) |
 | `AUTH_PORT` | `PORT+1` | local auth proxy port |
 | `PINOKIO_DIR` | `~/pinokiod` | pinokiod checkout |
 | `PINOKIO_HOME` | `~/.pinokio` | Pinokio state dir (apps, downloads) |
 | `LOG_DIR` | `$PINOKIO_DIR/logs` | log output |
-| `URL_FILE` | `url.md` next to `start.sh` | live-URL status file |
-| `URL_PUSH` | `0` | `1` = commit + push `url.md` on every start/stop |
+| `AUTO_APPS` | `1` | `0` = do not tunnel app ports |
+| `ALLOW_PORTS` | unset | extra ports to tunnel regardless of owner |
+| `URL_FILE` | `url.md` next to `start.sh` | live-URL status file (local, gitignored) |
+| `URL_SHOW_PASS` | `1` | `0` = keep the password out of `url.md` |
+| `URL_PUSH` | `0` | `1` = commit + push the URL (needs `URL_SHOW_PASS=0`) |
 
 ## Auth
 
@@ -90,16 +104,32 @@ URL_PUSH=1 ./start.sh          # keep url.md on GitHub in sync
 
 ## url.md
 
-`start.sh` rewrites `url.md` twice per session: once when the tunnel is up, once on shutdown.
+`start.sh` rewrites `url.md` whenever the tunnel comes up, reconnects, or shuts down. It is **local only** (gitignored) because it contains the current password.
 
 ```markdown
-## http://bore.pub:17731
+## http://bore.pub:46490
+
+| | |
+|---|---|
+| User | `bkg` |
+| Password | `-tQUw7qVh4Mc` |
 ```
 
-Set `URL_PUSH=1` to also commit and push it, so the file on GitHub always shows whether the tunnel is live. That needs push access to the repo containing `url.md` (an SSH deploy key with write access works). Without it, the file is still updated locally.
+`status.sh` prints the same thing, plus every app tunnel.
 
-Note the URL is **random on every launch** and dies with the process — `url.md` is a status indicator, not a permanent address. See below for a stable URL.
+Set `URL_SHOW_PASS=0` to leave the password to `logs/credentials.txt` and the console. With that set, `URL_PUSH=1` additionally commits and pushes `url.md`, so GitHub always shows whether the tunnel is live. That needs push access to this repo (an SSH deploy key with write access works).
 
+## Colab / ephemeral machines
+
+Runtimes like Colab are wiped when the session ends, so `/content` and `~/.pinokio` are lost. Only GitHub survives:
+
+```bash
+# after a new runtime comes up
+curl -fsSL https://raw.githubusercontent.com/bkg-zig/bore.pub/main/install.sh | sudo bash
+~/pinokiod/start.sh
+```
+
+`install.sh` is idempotent and pulls the latest `start.sh`, `stop.sh`, `status.sh`, `auth-proxy.js` and the auto-tunnel plugin. You get a new tunnel URL and a new password, printed at startup and written to `url.md`.
 
 ## Stable URLs (self-hosted server)
 
@@ -121,9 +151,11 @@ Apps tunnelled by the auto-tunnel plugin are **not** authenticated — that plug
 
 ```
 install.sh     # node + bore + pinokiod + npm deps + auto-tunnel plugin
-start.sh       # pinokiod -> auth proxy -> bore tunnel, clean shutdown
+start.sh       # pinokiod -> auth proxy -> bore tunnel, supervised
+stop.sh        # clean shutdown via pidfile
+status.sh      # what runs, live URL, every app tunnel
 auth-proxy.js  # Basic Auth + WebSocket reverse proxy
-url.md         # current tunnel URL, rewritten by start.sh
+url.md         # current URL + password, local only (gitignored)
 ```
 
 ## License

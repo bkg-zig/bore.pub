@@ -1,3 +1,5 @@
 logs/
 node_modules/
 *.log
+# live URL + current password, machine-local only
+url.md

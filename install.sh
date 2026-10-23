@@ -86,15 +86,18 @@ npm ci --omit=dev --no-audit --no-fund
 START_URL="${START_URL:-https://raw.githubusercontent.com/bkg-zig/bore.pub/main/start.sh}"
 SELF="${BASH_SOURCE[0]:-}"
 if [[ -n "$SELF" && -f "$SELF" && -f "$(dirname "$SELF")/start.sh" ]]; then
-  install -m 0755 "$(dirname "$SELF")/start.sh" "$PINOKIO_DIR/start.sh"
+  for f in start.sh stop.sh status.sh; do
+    [[ -f "$(dirname "$SELF")/$f" ]] && install -m 0755 "$(dirname "$SELF")/$f" "$PINOKIO_DIR/$f"
+  done
   [[ -f "$(dirname "$SELF")/auth-proxy.js" ]] && \
     install -m 0644 "$(dirname "$SELF")/auth-proxy.js" "$PINOKIO_DIR/auth-proxy.js"
-  log "installed start.sh from local checkout"
+  log "installed start.sh, stop.sh, status.sh, auth-proxy.js from local checkout"
 else
-  curl -fsSL "$START_URL" -o "$PINOKIO_DIR/start.sh"
-  chmod +x "$PINOKIO_DIR/start.sh"
+  for f in start.sh stop.sh status.sh; do
+    curl -fsSL "${START_URL%/*}/$f" -o "$PINOKIO_DIR/$f" && chmod +x "$PINOKIO_DIR/$f"
+  done
   curl -fsSL "${START_URL%/*}/auth-proxy.js" -o "$PINOKIO_DIR/auth-proxy.js"
-  log "installed start.sh + auth-proxy.js from ${START_URL%/*}"
+  log "installed start.sh, stop.sh, status.sh, auth-proxy.js from ${START_URL%/*}"
 fi
 
 # ---- auto-tunnel plugin ----------------------------------------------------
@@ -102,6 +105,7 @@ fi
 PINOKIO_HOME="${PINOKIO_HOME:-$HOME/.pinokio}"
 PLUGIN_DIR="$PINOKIO_HOME/plugin/bore-pinokio-auto"
 PLUGIN_REPO="${PLUGIN_REPO:-https://github.com/bkg-zig/bore_pinokio_pluckin-bKG.git}"
+PLUGIN_RAW="${PLUGIN_RAW:-https://raw.githubusercontent.com/bkg-zig/bore_pinokio_pluckin-bKG/main}"
 mkdir -p "$PINOKIO_HOME/plugin"
 if [[ -d "$PLUGIN_DIR/.git" ]]; then
   git -C "$PLUGIN_DIR" pull --ff-only -q || true
@@ -110,12 +114,33 @@ else
   log "installing auto-tunnel plugin"
   git clone --depth 1 -q "$PLUGIN_REPO" "$PLUGIN_DIR" || log "warning: could not clone plugin"
 fi
+
 # Mark it installed in the Pinokio UI by seeding the binary it looks for.
 if [[ -d "$PLUGIN_DIR" && ! -x "$PLUGIN_DIR/bore" ]]; then
   cp /usr/local/bin/bore "$PLUGIN_DIR/bore" 2>/dev/null && chmod +x "$PLUGIN_DIR/bore" || true
 fi
 
+# The app watcher runs from the pinokiod dir, started automatically by start.sh.
+if [[ -f "$PLUGIN_DIR/auto-tunnel.sh" ]]; then
+  install -m 0755 "$PLUGIN_DIR/auto-tunnel.sh" "$PINOKIO_DIR/auto-tunnel.sh"
+else
+  curl -fsSL "$PLUGIN_RAW/auto-tunnel.sh" -o "$PINOKIO_DIR/auto-tunnel.sh" \
+    && chmod +x "$PINOKIO_DIR/auto-tunnel.sh" || log "warning: auto-tunnel.sh missing"
+fi
+
+# ---- credentials -----------------------------------------------------------
+# Username is bkg; the password is generated on every start and written to
+# url.md, so nothing secret is stored here.
+AUTH_ENV="$PINOKIO_HOME/auth.env"
+if [[ ! -f "$AUTH_ENV" ]]; then
+  umask 077
+  printf 'AUTH_USER=bkg\n' >"$AUTH_ENV"
+  chmod 600 "$AUTH_ENV"
+  umask 022
+  log "wrote $AUTH_ENV (user bkg, random password at each start)"
+fi
+
 printf '\n'
 log "done. start it with:"
 printf '\n    %s/start.sh\n\n' "$PINOKIO_DIR"
-log "then open the Pinokio dashboard: the plugin lists every live tunnel URL."
+log "user is bkg; the random password is printed at start and saved in url.md."
